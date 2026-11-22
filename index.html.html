@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trackr – Movie & TV Series Tracker</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<style>
+  body{background:#0b0d12;color:#e7e9ee;font-family:Inter,system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#2a2f3a;border-radius:8px}
+  .pop{animation:pop .35s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+  .fade{animation:fade .25s ease-out}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .bar{transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .glow{animation:glow .7s ease-out}
+  @keyframes glow{0%{box-shadow:0 0 0 0 rgba(244,63,94,.6)}100%{box-shadow:0 0 0 14px rgba(244,63,94,0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useEffect,useMemo,useRef}=React;
+const html=htm.bind(React.createElement);
+
+/* ---------- Icons (Lucide paths) ---------- */
+const P={
+ search:'M3 11a8 8 0 1 0 16 0a8 8 0 1 0-16 0|m21 21-4.3-4.3',
+ check:'M20 6 9 17l-5-5',plus:'M5 12h14|M12 5v14',x:'M18 6 6 18|M6 6l12 12',
+ down:'m6 9 6 6 6-6',
+ film:'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M7 3v18|M17 3v18|M3 12h18',
+ tv:'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M7 21h10|M12 17v4',
+ set:'M4 21v-7|M4 10V3|M12 21v-9|M12 8V3|M20 21v-5|M20 12V3|M1 14h6|M9 8h6|M17 16h6',
+ compass:'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0|m16.24 7.76-1.8 5.4a2 2 0 0 1-1.3 1.3L7.76 16.24l1.8-5.4a2 2 0 0 1 1.3-1.3z',
+ archive:'M3 4h18v4H3z|M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8|M10 12h4',
+ star:'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z',
+ dl:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4|M7 10l5 5 5-5|M12 15V3',
+ ul:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4|M17 8l-5-5-5 5|M12 3v12',
+ trash:'M3 6h18|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6|M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
+ play:'M5 3l14 9-14 9z'
+};
+const Icon=({n,s=18,c='',fill})=>html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill=${fill?'currentColor':'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className=${c}>${P[n].split('|').map((d,i)=>html`<path key=${i} d=${d}/>`)}</svg>`;
+
+/* ---------- Demo data ---------- */
+const mkTV=(id,title,year,rating,hue,overview,rt,seasons)=>({id:'demo-'+id,type:'tv',title,year,rating,hue,overview,runtime:rt,poster:null,
+ seasons:seasons.map(([cnt,titles],si)=>{const t=(titles||'').split('|');return{n:si+1,eps:Array.from({length:cnt},(_,i)=>({n:i+1,t:t[i]||'Episode '+(i+1),d:new Date(Date.UTC(year+si,0,5+i*7)).toISOString().slice(0,10)}))}})});
+const DEMO=[
+ mkTV('st','Stranger Things',2016,8.6,350,'Ketika seorang anak laki-laki menghilang, kota kecil di Indiana mengungkap misteri eksperimen rahasia, kekuatan supernatural, dan seorang gadis aneh.',50,[[8,'The Vanishing of Will Byers|The Weirdo on Maple Street|Holly, Jolly|The Body|The Flea and the Acrobat|The Monster|The Bathtub|The Upside Down'],[9,'']]),
+ mkTV('bear','The Bear',2022,8.6,25,'Seorang koki muda kembali ke Chicago untuk mengelola kedai sandwich keluarganya yang berantakan setelah kematian sang kakak.',35,[[8,'System|Hands|Brigade|Dogs|Sheridan|Ceres|Review|Braciole'],[10,'']]),
+ mkTV('sev','Severance',2022,8.7,200,'Para karyawan Lumon menjalani prosedur yang memisahkan ingatan kerja dan kehidupan pribadi mereka. Apa sebenarnya yang mereka kerjakan?',50,[[9,'Good News About Hell|Half Loop|In Perpetuity|The You You Are|The Grim Barbarity of Optics and Design|Hide and Seek|Defiant Jazz|What is for Dinner?|The We We Are'],[10,'']]),
+ {id:'demo-dune',type:'movie',title:'Dune: Part Two',year:2024,rating:8.2,hue:35,runtime:166,poster:null,overview:'Paul Atreides bersatu dengan Chani dan suku Fremen untuk membalas dendam pada para konspirator yang menghancurkan keluarganya.'},
+ {id:'demo-opp',type:'movie',title:'Oppenheimer',year:2023,rating:8.1,hue:15,runtime:180,poster:null,overview:'Kisah ilmuwan J. Robert Oppenheimer dan perannya dalam pengembangan bom atom.'}
+];
+
+/* ---------- Helpers ---------- */
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const IMG='https://image.tmdb.org/t/p/w342';
+const tmdb=async(path,key)=>{
+ const bearer=key.length>40;
+ const r=await fetch('https://api.themoviedb.org/3'+path+(path.includes('?')?'&':'?')+'language=en-US'+(bearer?'':'&api_key='+key),bearer?{headers:{Authorization:'Bearer '+key}}:undefined);
+ if(!r.ok)throw new Error(r.status===401?'API key tidak valid':'Gagal terhubung ke TMDB ('+r.status+')');
+ return r.json();
+};
+const norm=r=>({id:r.media_type+'-'+r.id,tmdb:r.id,type:r.media_type,title:r.title||r.name,year:((r.release_date||r.first_air_date)||'').slice(0,4),rating:r.vote_average?+r.vote_average.toFixed(1):0,overview:r.overview,poster:r.poster_path?IMG+r.poster_path:null,hue:(r.id*37)%360});
+const prog=it=>{if(it.type!=='tv')return{t:0,w:0,p:0};const t=it.seasons.reduce((a,s)=>a+s.eps.length,0);const w=Object.keys(it.w||{}).length;return{t,w,p:t?Math.round(w/t*100):0}};
+const nextEp=it=>{for(const s of it.seasons)for(const e of s.eps)if(!(it.w||{})[s.n+'x'+e.n])return{s:s.n,e:e.n,t:e.t};return null};
+const code=(s,e)=>'S'+String(s).padStart(2,'0')+'E'+String(e).padStart(2,'0');
+const fmtTime=m=>{const h=Math.round(m/60);return h>=24?Math.floor(h/24)+' hari '+(h%24)+' jam':h+' jam'};
+
+/* ---------- UI atoms ---------- */
+const Poster=({it,c=''})=>it.poster?html`<img src=${it.poster} alt=${it.title} loading="lazy" className=${'object-cover w-full h-full '+c}/>`:
+ html`<div className=${'w-full h-full flex items-end p-2 '+c} style=${{background:`linear-gradient(160deg,hsl(${it.hue||0} 60% 32%),hsl(${(it.hue||0)+40} 50% 10%))`}}><span className="text-sm font-bold leading-tight drop-shadow">${it.title}</span></div>`;
+const Bar=({p})=>html`<div className="h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="bar h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400" style=${{width:p+'%'}}/></div>`;
+const Rate=({v})=>v?html`<span className="inline-flex items-center gap-1 text-amber-400 text-xs"><${Icon} n="star" s=${12} fill=${1}/>${v}</span>`:null;
+
+function Stat({label,value}){return html`<div className="flex-1 rounded-xl bg-white/5 border border-white/5 px-3 py-2.5"><div className="text-lg font-bold">${value}</div><div className="text-[11px] text-zinc-400">${label}</div></div>`}
+
+/* ---------- App ---------- */
+function App(){
+ const [data,setData]=useState(()=>load('mt_data',{}));
+ const [key,setKey]=useState(()=>localStorage.getItem('mt_key')||'');
+ const [keyDraft,setKeyDraft]=useState(key);
+ const [tab,setTab]=useState('up');
+ const [openId,setOpenId]=useState(null);
+ const [toast,setToast]=useState('');
+ const [q,setQ]=useState('');
+ const [res,setRes]=useState([]);
+ const [busy,setBusy]=useState(false);
+ const [err,setErr]=useState('');
+ const [flash,setFlash]=useState(null);
+ const fileRef=useRef();
+ const demo=!key;
+
+ useEffect(()=>{try{localStorage.setItem('mt_data',JSON.stringify(data))}catch{}},[data]);
+ const say=m=>{setToast(m);clearTimeout(say.t);say.t=setTimeout(()=>setToast(''),2200)};
+ const upd=(id,fn)=>setData(d=>({...d,[id]:fn(d[id])}));
+ const items=Object.values(data);
+ const tv=items.filter(i=>i.type==='tv');
+ const movies=items.filter(i=>i.type==='movie');
+ const up=tv.filter(i=>{const p=prog(i);return p.w<p.t});
+ const done=tv.filter(i=>{const p=prog(i);return p.t>0&&p.w===p.t});
+ const stats=useMemo(()=>{
+  let eps=0,min=0;tv.forEach(i=>{const w=Object.keys(i.w||{}).length;eps+=w;min+=w*(i.runtime||45)});
+  const mw=movies.filter(m=>m.status==='watched');mw.forEach(m=>min+=m.runtime||110);
+  return{eps,mv:mw.length,min};
+ },[data]);
+
+ /* search / explore */
+ useEffect(()=>{
+  if(tab!=='explore')return;
+  setErr('');
+  if(demo){const s=q.trim().toLowerCase();setRes(DEMO.filter(d=>d.title.toLowerCase().includes(s)));return}
+  setBusy(true);
+  const h=setTimeout(async()=>{
+   try{
+    const j=q.trim()?await tmdb('/search/multi?query='+encodeURIComponent(q),key):await tmdb('/trending/all/week',key);
+    setRes(j.results.filter(r=>r.media_type==='tv'||r.media_type==='movie').map(norm));
+   }catch(e){setErr(e.message);setRes([])}
+   setBusy(false);
+  },q.trim()?400:0);
+  return()=>clearTimeout(h);
+ },[q,tab,key]);
+
+ const add=async r=>{
+  if(data[r.id])return;
+  try{
+   let it={...r,w:{},added:Date.now()};
+   if(!r.seasons&&!demo){
+    if(r.type==='tv'){
+     const d=await tmdb('/tv/'+r.tmdb,key);
+     const ss=d.seasons.filter(s=>s.season_number>0);
+     const full=await Promise.all(ss.map(s=>tmdb('/tv/'+r.tmdb+'/season/'+s.season_number,key)));
+     it.seasons=full.map(s=>({n:s.season_number,eps:s.episodes.map(e=>({n:e.episode_number,t:e.name,d:e.air_date||''}))}));
+     it.runtime=(d.episode_run_time&&d.episode_run_time[0])||45;
+    }else{const d=await tmdb('/movie/'+r.tmdb,key);it.runtime=d.runtime||110}
+   }
+   if(r.type==='movie')it.status='watchlist';
+   setData(d=>({...d,[r.id]:it}));
+   say('Ditambahkan: '+r.title);
+  }catch(e){say(e.message)}
+ };
+ const remove=id=>{setOpenId(null);setData(d=>{const n={...d};delete n[id];return n});say('Dihapus dari daftar')};
+ const flashEp=k=>{setFlash(k);setTimeout(()=>setFlash(null),700)};
+ const toggleEp=(id,s,e)=>{upd(id,it=>{const w={...it.w},k=s+'x'+e;w[k]?delete w[k]:w[k]=1;return{...it,w}});flashEp(s+'x'+e)};
+ const markNext=it=>{const n=nextEp(it);if(!n)return;upd(it.id,x=>({...x,w:{...x.w,[n.s+'x'+n.e]:1}}));say(code(n.s,n.e)+' ditandai sudah ditonton ✓')};
+ const markSeason=(id,sn)=>upd(id,it=>{const s=it.seasons.find(x=>x.n===sn);const all=s.eps.every(e=>it.w[sn+'x'+e.n]);const w={...it.w};s.eps.forEach(e=>all?delete w[sn+'x'+e.n]:w[sn+'x'+e.n]=1);return{...it,w}});
+ const setStatus=(id,st)=>{upd(id,it=>({...it,status:st}));say(st==='watched'?'Ditandai sudah ditonton ✓':'Dipindah ke Watchlist')};
+
+ /* settings */
+ const saveKey=()=>{const k=keyDraft.trim();setKey(k);try{k?localStorage.setItem('mt_key',k):localStorage.removeItem('mt_key')}catch{}say(k?'API key disimpan':'Kembali ke Demo Mode')};
+ const exp=()=>{const b=new Blob([JSON.stringify({v:1,data},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='trackr-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();say('Backup diekspor')};
+ const imp=f=>{if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!j.data||typeof j.data!=='object')throw 0;setData(j.data);say('Data berhasil diimpor')}catch{say('File JSON tidak valid')}};r.readAsText(f)};
+
+ /* ---------- Views ---------- */
+ const Empty=({t,cta})=>html`<div className="text-center py-16 text-zinc-400 fade"><p className="mb-4">${t}</p><button onClick=${()=>setTab('explore')} className="px-4 py-2 rounded-full bg-rose-500 text-white text-sm font-semibold">${cta||'Jelajahi'}</button></div>`;
+
+ const Grid=({list,children})=>html`<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">${list.map(it=>children(it))}</div>`;
+ const Card=({it,extra})=>html`<div key=${it.id} className="fade group">
+  <button onClick=${()=>setOpenId(it.id)} className="block w-full aspect-[2/3] rounded-xl overflow-hidden bg-zinc-900 relative ring-1 ring-white/10 group-hover:ring-rose-500/60 transition">
+   <${Poster} it=${it} c="group-hover:scale-105 transition duration-300"/>
+   ${it.type==='tv'&&prog(it).t?html`<div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/90"><${Bar} p=${prog(it).p}/></div>`:null}
+  </button>
+  <div className="mt-2 text-sm font-semibold truncate">${it.title}</div>
+  <div className="flex items-center gap-2 text-xs text-zinc-400"><span>${it.year}</span><${Rate} v=${it.rating}/></div>
+  ${extra}
+ </div>`;
+
+ const UpNext=()=>up.length?html`<div className="space-y-3">${up.sort((a,b)=>b.added-a.added).map(it=>{
+  const p=prog(it),n=nextEp(it);
+  return html`<div key=${it.id} className="fade flex gap-3 p-3 rounded-2xl bg-white/[.04] border border-white/5">
+   <button onClick=${()=>setOpenId(it.id)} className="w-20 sm:w-24 shrink-0 aspect-[2/3] rounded-lg overflow-hidden"><${Poster} it=${it}/></button>
+   <div className="flex-1 min-w-0 flex flex-col">
+    <button onClick=${()=>setOpenId(it.id)} className="text-left font-bold truncate">${it.title}</button>
+    <div className="text-xs text-zinc-400 truncate mt-0.5">Berikutnya: <span className="text-zinc-200">${code(n.s,n.e)}</span> · ${n.t}</div>
+    <div className="mt-2"><${Bar} p=${p.p}/><div className="text-[11px] text-zinc-500 mt-1">${p.w}/${p.t} episode · ${p.p}%</div></div>
+    <button onClick=${()=>markNext(it)} className="mt-auto self-start flex items-center gap-1.5 px-3 py-2 rounded-full bg-rose-500 hover:bg-rose-400 active:scale-95 transition text-xs font-semibold"><${Icon} n="check" s=${14}/>Mark Episode ${code(n.s,n.e)} Watched</button>
+   </div>
+  </div>`})}</div>`:html`<${Empty} t="Belum ada series yang sedang ditonton." cta="Cari Series"/>`;
+
+ const Movies=()=>{
+  const wl=movies.filter(m=>m.status!=='watched'),wd=movies.filter(m=>m.status==='watched');
+  if(!movies.length)return html`<${Empty} t="Belum ada film di daftarmu." cta="Cari Film"/>`;
+  const sec=(t,l,btn,st)=>html`<section className="mb-8"><h2 className="text-sm font-semibold text-zinc-300 mb-3">${t} <span className="text-zinc-500">(${l.length})</span></h2>
+   ${l.length?html`<${Grid} list=${l}>${it=>html`<${Card} key=${it.id} it=${it} extra=${html`<button onClick=${()=>setStatus(it.id,st)} className="mt-2 w-full text-xs py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition">${btn}</button>`}/>`}</${Grid}>`:html`<p className="text-sm text-zinc-500">Kosong.</p>`}</section>`;
+  return html`<div>${sec('Watchlist',wl,'Mark Watched','watched')}${sec('Watched',wd,'Pindah ke Watchlist','watchlist')}</div>`;
+ };
+
+ const Completed=()=>done.length?html`<${Grid} list=${done}>${it=>html`<${Card} key=${it.id} it=${it}/>`}</${Grid}>`:html`<${Empty} t="Belum ada series yang tamat. Terus nonton!" cta="Cari Series"/>`;
+
+ const Explore=()=>html`<div>
+  <div className="relative mb-4"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><${Icon} n="search"/></span>
+   <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder=${demo?'Cari di katalog demo…':'Cari film atau TV series…'} className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-rose-500 outline-none text-sm"/></div>
+  ${demo?html`<div className="mb-4 text-xs rounded-lg bg-amber-500/10 text-amber-300 px-3 py-2">Demo Mode aktif. Masukkan TMDB API Key di <button className="underline font-semibold" onClick=${()=>setTab('settings')}>Settings</button> untuk data nyata.</div>`:null}
+  ${err?html`<div className="mb-4 text-sm rounded-lg bg-rose-500/10 text-rose-300 px-3 py-2">${err}</div>`:null}
+  ${busy?html`<p className="text-sm text-zinc-500">Memuat…</p>`:null}
+  ${!demo&&!q.trim()&&res.length?html`<h2 className="text-sm font-semibold text-zinc-300 mb-3">Trending minggu ini</h2>`:null}
+  <${Grid} list=${res}>${it=>{const added=!!data[it.id];return html`<${Card} key=${it.id} it=${it} extra=${html`<button disabled=${added} onClick=${()=>add(it)} className=${'mt-2 w-full text-xs py-1.5 rounded-lg active:scale-95 transition flex items-center justify-center gap-1 '+(added?'bg-emerald-500/15 text-emerald-300':'bg-rose-500 hover:bg-rose-400 font-semibold')}><${Icon} n=${added?'check':'plus'} s=${13}/>${added?'Ditambahkan':it.type==='tv'?'Add Series':'Add to Watchlist'}</button>`}/>`}}</${Grid}>
+  ${!busy&&!res.length&&!err?html`<p className="text-center text-zinc-500 py-10 text-sm">Tidak ada hasil.</p>`:null}
+ </div>`;
+
+ const Settings=()=>html`<div className="max-w-xl space-y-6">
+  <section className="p-4 rounded-2xl bg-white/[.04] border border-white/5">
+   <h2 className="font-bold mb-1">TMDB API Key</h2>
+   <p className="text-xs text-zinc-400 mb-3">Dapatkan gratis di themoviedb.org → Settings → API. Mendukung API Key (v3) maupun Read Access Token (v4). Disimpan hanya di browser kamu.</p>
+   <input value=${keyDraft} onChange=${e=>setKeyDraft(e.target.value)} placeholder="Tempel API key di sini" className="w-full px-3 py-2.5 rounded-lg bg-black/40 border border-white/10 focus:border-rose-500 outline-none text-sm font-mono"/>
+   <div className="flex items-center gap-3 mt-3"><button onClick=${saveKey} className="px-4 py-2 rounded-full bg-rose-500 text-sm font-semibold active:scale-95 transition">Simpan</button>
+    <span className=${'text-xs '+(demo?'text-amber-300':'text-emerald-300')}>${demo?'Mode: Demo':'Mode: TMDB Live'}</span></div>
+  </section>
+  <section className="p-4 rounded-2xl bg-white/[.04] border border-white/5">
+   <h2 className="font-bold mb-1">Backup Data</h2>
+   <p className="text-xs text-zinc-400 mb-3">Ekspor progres ke file JSON atau impor untuk memulihkan / pindah perangkat.</p>
+   <div className="flex flex-wrap gap-2">
+    <button onClick=${exp} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-sm active:scale-95 transition"><${Icon} n="dl" s=${15}/>Export JSON</button>
+    <button onClick=${()=>fileRef.current.click()} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-sm active:scale-95 transition"><${Icon} n="ul" s=${15}/>Import JSON</button>
+    <input ref=${fileRef} type="file" accept="application/json" className="hidden" onChange=${e=>{imp(e.target.files[0]);e.target.value=''}}/>
+    <button onClick=${()=>{if(confirm('Hapus semua data tontonan?')){setData({});say('Semua data dihapus')}}} className="flex items-center gap-2 px-4 py-2 rounded-full text-rose-300 hover:bg-rose-500/10 text-sm"><${Icon} n="trash" s=${15}/>Reset</button>
+   </div>
+  </section>
+ </div>`;
+
+ /* detail modal */
+ const Detail=()=>{
+  const it=data[openId];const [os,setOs]=useState(1);
+  if(!it)return null;
+  const p=prog(it);
+  return html`<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm fade" onClick=${()=>setOpenId(null)}>
+   <div onClick=${e=>e.stopPropagation()} className="w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#12151c] border border-white/10">
+    <div className="relative p-4 sm:p-6 flex gap-4" style=${{background:`linear-gradient(180deg,hsl(${it.hue||0} 40% 16%),transparent)`}}>
+     <button onClick=${()=>setOpenId(null)} className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/60"><${Icon} n="x" s=${16}/></button>
+     <div className="w-28 sm:w-40 shrink-0 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl"><${Poster} it=${it}/></div>
+     <div className="min-w-0 pr-6">
+      <h2 className="text-xl sm:text-2xl font-extrabold leading-tight">${it.title}</h2>
+      <div className="flex items-center gap-2 text-xs text-zinc-300 mt-1"><span>${it.year}</span><span>·</span><span>${it.type==='tv'?'TV Series':'Movie'}</span><${Rate} v=${it.rating}/></div>
+      <p className="text-sm text-zinc-300 mt-3 line-clamp-5 sm:line-clamp-none">${it.overview||'Tidak ada sinopsis.'}</p>
+     </div>
+    </div>
+    <div className="px-4 sm:px-6 pb-6">
+     ${it.type==='tv'?html`
+      <div className="mb-4"><div className="flex justify-between text-sm mb-1.5"><span className="font-semibold">Progress</span><span className=${p.p===100?'text-emerald-400 font-bold':'text-zinc-300'}>${p.w}/${p.t} · ${p.p}%</span></div><${Bar} p=${p.p}/></div>
+      <div className="space-y-2">${it.seasons.map(s=>{
+       const sw=s.eps.filter(e=>it.w[s.n+'x'+e.n]).length,all=sw===s.eps.length,open=os===s.n;
+       return html`<div key=${s.n} className="rounded-xl border border-white/5 bg-white/[.03] overflow-hidden">
+        <button onClick=${()=>setOs(open?0:s.n)} className="w-full flex items-center justify-between px-4 py-3 text-left">
+         <span className="font-semibold text-sm">Season ${s.n} <span className="text-zinc-500 font-normal ml-1">${sw}/${s.eps.length}</span></span>
+         <span className=${'transition '+(open?'rotate-180':'')}><${Icon} n="down" s=${18}/></span></button>
+        ${open?html`<div className="fade border-t border-white/5">
+         <div className="px-4 py-2"><button onClick=${()=>markSeason(it.id,s.n)} className=${'text-xs px-3 py-1.5 rounded-full active:scale-95 transition '+(all?'bg-white/10':'bg-rose-500 font-semibold')}>${all?'Unmark Season':'Mark Entire Season as Watched'}</button></div>
+         ${s.eps.map(e=>{const k=s.n+'x'+e.n,on=!!it.w[k];
+          return html`<button key=${k} onClick=${()=>toggleEp(it.id,s.n,e.n)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/5 transition">
+           <span className=${'shrink-0 w-6 h-6 rounded-md border flex items-center justify-center transition '+(on?'bg-rose-500 border-rose-500':'border-zinc-600')+(flash===k?' glow':'')}>${on?html`<span className="pop"><${Icon} n="check" s=${15}/></span>`:null}</span>
+           <span className="flex-1 min-w-0"><span className=${'block text-sm truncate transition '+(on?'text-zinc-500 line-through':'')}>${e.n}. ${e.t}</span><span className="block text-[11px] text-zinc-500">${e.d||'TBA'}</span></span>
+          </button>`})}</div>`:null}
+       </div>`})}</div>`:html`
+      <div className="flex flex-wrap gap-2 mt-2">
+       ${it.status==='watched'?html`<button onClick=${()=>setStatus(it.id,'watchlist')} className="px-4 py-2 rounded-full bg-white/10 text-sm">Pindah ke Watchlist</button>`:html`<button onClick=${()=>setStatus(it.id,'watched')} className="px-4 py-2 rounded-full bg-rose-500 text-sm font-semibold flex items-center gap-2"><${Icon} n="check" s=${15}/>Mark Watched</button>`}
+       <span className="text-xs text-zinc-400 self-center">${it.runtime||'?'} menit</span></div>`}
+     <button onClick=${()=>remove(it.id)} className="mt-6 text-xs text-rose-300/80 hover:text-rose-300 flex items-center gap-1.5"><${Icon} n="trash" s=${13}/>Hapus dari daftar</button>
+    </div>
+   </div></div>`;
+ };
+
+ const TABS=[['up','Up Next','tv'],['movies','Movies','film'],['done','Completed','archive'],['explore','Explore','compass'],['settings','Settings','set']];
+ const view={up:UpNext,movies:Movies,done:Completed,explore:Explore,settings:Settings}[tab];
+
+ return html`<div className="min-h-screen pb-24 md:pb-10">
+  <header className="sticky top-0 z-30 bg-[#0b0d12]/90 backdrop-blur border-b border-white/5">
+   <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+    <div className="flex items-center gap-2 font-extrabold text-lg"><span className="w-7 h-7 rounded-lg bg-rose-500 flex items-center justify-center"><${Icon} n="play" s=${14} fill=${1}/></span>Trackr</div>
+    <nav className="hidden md:flex gap-1">${TABS.map(([k,l,i])=>html`<button key=${k} onClick=${()=>setTab(k)} className=${'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition '+(tab===k?'bg-white/10 text-white':'text-zinc-400 hover:text-white')}><${Icon} n=${i} s=${15}/>${l}</button>`)}</nav>
+   </div>
+  </header>
+  <main className="max-w-5xl mx-auto px-4 pt-5">
+   <div className="flex gap-2 sm:gap-3 mb-6">
+    <${Stat} label="Episode ditonton" value=${stats.eps}/><${Stat} label="Film ditonton" value=${stats.mv}/><${Stat} label="Estimasi waktu" value=${fmtTime(stats.min)}/>
+   </div>
+   <h1 className="text-xl font-bold mb-4">${TABS.find(t=>t[0]===tab)[1]}</h1>
+   <${view}/>
+  </main>
+  <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-[#0b0d12]/95 backdrop-blur border-t border-white/10 flex" style=${{paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+   ${TABS.map(([k,l,i])=>html`<button key=${k} onClick=${()=>setTab(k)} className=${'flex-1 py-2.5 flex flex-col items-center gap-1 text-[10px] transition '+(tab===k?'text-rose-400':'text-zinc-500')}><${Icon} n=${i} s=${20}/>${l}</button>`)}
+  </nav>
+  <${Detail} key=${openId}/>
+  ${toast?html`<div className="fade fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-full bg-zinc-100 text-zinc-900 text-sm font-medium shadow-xl max-w-[90vw] text-center">${toast}</div>`:null}
+ </div>`;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+</script>
+</body>
+</html>
